@@ -4,10 +4,6 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-GITHUB_PAT   = os.environ.get("GITHUB_PAT", "")
-GITHUB_REPO  = os.environ.get("GITHUB_REPO", "")      # e.g. "kkwon75/futures-report"
-GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
-PAGES_URL    = os.environ.get("PAGES_URL", "")         # e.g. "https://kkwon75.github.io/futures-report"
 WORKFLOW_FILE = "generate_report.yml"
 
 _GH_HEADERS = {
@@ -16,14 +12,36 @@ _GH_HEADERS = {
 }
 
 def _auth():
-    return {"Authorization": f"Bearer {GITHUB_PAT}", **_GH_HEADERS}
+    pat = os.environ.get("GITHUB_PAT", "")
+    return {"Authorization": f"Bearer {pat}", **_GH_HEADERS}
+
+def _repo():
+    return os.environ.get("GITHUB_REPO", "")
+
+def _branch():
+    return os.environ.get("GITHUB_BRANCH", "main")
+
+def _pages_url():
+    return os.environ.get("PAGES_URL", "")
+
+
+@app.get("/api/debug")
+def debug():
+    pat = os.environ.get("GITHUB_PAT", "")
+    return jsonify({
+        "GITHUB_PAT_SET": bool(pat),
+        "GITHUB_PAT_PREFIX": pat[:7] + "..." if len(pat) > 7 else "(empty)",
+        "GITHUB_REPO": os.environ.get("GITHUB_REPO", "(empty)"),
+        "GITHUB_BRANCH": os.environ.get("GITHUB_BRANCH", "main"),
+        "PAGES_URL": os.environ.get("PAGES_URL", "(empty)"),
+    })
 
 
 @app.post("/api/trigger")
 def trigger_workflow():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
+    url = f"https://api.github.com/repos/{_repo()}/actions/workflows/{WORKFLOW_FILE}/dispatches"
     try:
-        resp = requests.post(url, headers=_auth(), json={"ref": GITHUB_BRANCH}, timeout=10)
+        resp = requests.post(url, headers=_auth(), json={"ref": _branch()}, timeout=10)
     except requests.RequestException as e:
         return jsonify({"ok": False, "error": str(e)}), 502
     if resp.status_code == 204:
@@ -33,7 +51,7 @@ def trigger_workflow():
 
 @app.get("/api/status")
 def get_status():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/runs"
+    url = f"https://api.github.com/repos/{_repo()}/actions/workflows/{WORKFLOW_FILE}/runs"
     try:
         resp = requests.get(url, headers=_auth(), params={"per_page": 1}, timeout=10)
     except requests.RequestException as e:
@@ -43,11 +61,11 @@ def get_status():
         return jsonify({"status": "none", "conclusion": None})
     run = runs[0]
     return jsonify({
-        "status":     run["status"],           # queued | in_progress | completed
-        "conclusion": run.get("conclusion"),   # success | failure | cancelled | None
+        "status":     run["status"],
+        "conclusion": run.get("conclusion"),
         "created_at": run["created_at"],
         "run_url":    run["html_url"],
-        "pages_url":  PAGES_URL,
+        "pages_url":  _pages_url(),
     })
 
 
