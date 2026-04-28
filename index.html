@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>선물·옵션 시장 동향 보고서</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.7; }
+.header { background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%); border-bottom: 1px solid #2d3748; padding: 36px 48px 28px; }
+.header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.header h1 { font-size: 26px; font-weight: 700; color: #f7fafc; letter-spacing: -0.5px; }
+.header .subtitle { margin-top: 6px; font-size: 13px; color: #718096; }
+.header .date-badge { display: inline-block; margin-top: 12px; background: #2d3748; border: 1px solid #4a5568; border-radius: 20px; padding: 4px 14px; font-size: 12px; color: #a0aec0; }
+.refresh-btn { background: linear-gradient(135deg, #2b6cb0, #1a365d); border: 1px solid #4a5568; color: #bee3f8; border-radius: 10px; padding: 12px 22px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; white-space: nowrap; margin-top: 4px; }
+.refresh-btn:hover { background: linear-gradient(135deg, #3182ce, #2b6cb0); border-color: #63b3ed; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.gen-time { font-size: 11px; color: #4a5568; margin-top: 6px; text-align: right; }
+#loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,17,23,0.92); z-index: 9999; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
+.loading-spinner { width: 48px; height: 48px; border: 4px solid #2d3748; border-top-color: #63b3ed; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: #e2e8f0; font-size: 18px; font-weight: 600; }
+.loading-sub { color: #718096; font-size: 13px; }
+.macro-banner { background: linear-gradient(90deg, #1a2744 0%, #1a1f2e 100%); border-left: 4px solid #63b3ed; margin: 24px 48px 0; border-radius: 8px; padding: 14px 20px; font-size: 13px; color: #bee3f8; }
+.macro-banner strong { color: #63b3ed; }
+.section-title { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #4a5568; padding: 32px 48px 12px; border-bottom: 1px solid #1a202c; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 48px; }
+.grid-2col { grid-template-columns: repeat(2, 1fr); }
+.card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 20px; transition: border-color 0.2s; }
+.card:hover { border-color: #4a5568; }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.card-name { font-size: 11px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 1px; }
+.card-category { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.cat-fx { background: #1a365d; color: #63b3ed; }
+.cat-metal { background: #322659; color: #b794f4; }
+.cat-energy { background: #2d3748; color: #68d391; }
+.cat-grain { background: #1c4532; color: #9ae6b4; }
+.card-price { font-size: 28px; font-weight: 700; color: #f7fafc; margin: 4px 0; }
+.card-unit { font-size: 12px; color: #718096; margin-bottom: 8px; }
+.card-change { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 6px; }
+.up { background: #1c4532; color: #68d391; }
+.down { background: #742a2a; color: #fc8181; }
+.neutral { background: #2d3748; color: #a0aec0; }
+.sparkline-row { margin: 8px 0 4px; }
+.divider { border: none; border-top: 1px solid #2d3748; margin: 14px 0; }
+.news-block { margin-top: 10px; }
+.news-item { font-size: 12.5px; color: #a0aec0; margin-bottom: 8px; padding-left: 12px; border-left: 2px solid #2d3748; }
+.news-item strong { color: #e2e8f0; }
+.news-item .tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 4px; background: #2d3748; color: #718096; }
+.tag-bullish { background: #1c4532; color: #68d391; }
+.tag-bearish { background: #742a2a; color: #fc8181; }
+.tag-neutral { background: #2d3748; color: #a0aec0; }
+.macro-section { padding: 0 48px 24px; }
+.macro-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+.macro-card h3 { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 12px; }
+.macro-card p { font-size: 13px; color: #a0aec0; margin-bottom: 8px; }
+.macro-card .key-point { color: #e2e8f0; }
+.factor-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.factor-chip { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 1px solid #2d3748; color: #a0aec0; background: #0f1117; }
+.factor-chip.red { border-color: #742a2a; color: #fc8181; background: #1a0a0a; }
+.factor-chip.green { border-color: #1c4532; color: #68d391; background: #0a1a0e; }
+.factor-chip.blue { border-color: #1a365d; color: #63b3ed; background: #0a0f1a; }
+.factor-chip.purple { border-color: #322659; color: #b794f4; background: #0f0a1a; }
+.sources { padding: 24px 48px; border-top: 1px solid #1a202c; }
+.sources h4 { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #4a5568; margin-bottom: 12px; }
+.sources a { color: #4a5568; font-size: 11px; text-decoration: none; margin-right: 16px; }
+.sources a:hover { color: #718096; text-decoration: underline; }
+.footer { padding: 16px 48px; font-size: 11px; color: #4a5568; border-top: 1px solid #1a202c; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; padding: 16px 20px; } .grid-2col { grid-template-columns: 1fr; } .section-title, .header, .macro-section, .sources, .footer { padding-left: 20px; padding-right: 20px; } .macro-banner { margin-left: 20px; margin-right: 20px; } .header-top { flex-direction: column; gap: 16px; } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- 로딩 오버레이 -->
+<div id="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">📊 시장 데이터 조회 중...</div>
+  <div class="loading-sub">Yahoo Finance에서 실시간 데이터를 가져오고 있습니다</div>
+</div>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>📊 글로벌 선물·옵션 시장 동향 보고서</h1>
+      <div class="subtitle">통화 · 귀금속 · 에너지 · 곡물 선물 가격 및 주요 뉴스 분석</div>
+      <div class="date-badge">🗓 2026년 04월 28일 (Tue) 기준 (싱가포르 시간 오후 6시)</div>
+    </div>
+    <div>
+      <button class="refresh-btn" onclick="refreshPage()">🔄 새로고침</button>
+      <div class="gen-time">⚡ 생성 시간: 1.1초</div>
+    </div>
+  </div>
+</div>
+
+<div class="macro-banner"><strong>📡 주요 동향 (5일):</strong> <strong>WTI 원유</strong> ▲+8.5%(5d) &nbsp;·&nbsp; <strong>밀</strong> ▲+7.8%(5d) &nbsp;·&nbsp; <strong>옥수수</strong> ▲+4.6%(5d). Yahoo Finance 실시간 데이터 기반 자동 생성.</div>
+
+<!-- ===== 통화 (FX) ===== -->
+<div class="section-title">💱 통화 선물 (FX Futures) — CME Globex</div>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Australian Dollar</div>
+      <div class="card-category cat-fx">AUD/USD</div>
+    </div>
+    <div class="card-price">0.7182</div>
+    <div class="card-unit">USD per AUD · CME 6A</div>
+    <span class="card-change up">▲ +0.54% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+0.1%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+1.0%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,24.9 8.5,19.0 16.9,28.0 25.4,15.3 33.8,10.4 42.3,3.0 50.8,5.7 59.2,9.5 67.7,3.2 76.2,6.1 84.6,5.8 93.1,10.4 101.5,8.2 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <a href="https://finance.yahoo.com/markets/currencies/articles/next-trade-comes-land-down-135525120.html" style="color:#bee3f8; text-decoration:none;"><strong>The Next Trade You Should Make Comes from the Land Down Under</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-24</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/news/dollar-subdued-markets-eye-ceasefire-013631071.html" style="color:#bee3f8; text-decoration:none;"><strong>Dollar subdued as markets eye ceasefire talks; yen pressured by BOJ delay</strong></a> <span style="font-size:10px; color:#4a5568;">— Reuters · 04-21</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/crypto/articles/standard-chartered-taking-over-full-190850247.html" style="color:#bee3f8; text-decoration:none;"><strong>Standard Chartered is Taking Over Full Crypto Custody Platform Zodia</strong></a> <span style="font-size:10px; color:#4a5568;">— BeInCrypto · 04-08</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Japanese Yen</div>
+      <div class="card-category cat-fx">JPY/USD</div>
+    </div>
+    <div class="card-price">158.73</div>
+    <div class="card-unit">JPY per USD · CME 6J</div>
+    <span class="card-change down">▼ -0.02% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+0.4%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+0.4%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,28.0 8.5,16.9 16.9,3.6 25.4,14.5 33.8,24.5 42.3,24.1 50.8,15.0 59.2,15.8 67.7,23.2 76.2,10.8 84.6,8.1 93.1,2.0 101.5,6.0 110.0,6.9" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-neutral">중립</span> <strong>Fed Decision Could Limit Dollar’s Potential to Fall</strong> <span style="font-size:10px; color:#4a5568;">— The Wall Street Journal · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/economy/policy/articles/bojs-split-vote-rates-marks-072329813.html" style="color:#bee3f8; text-decoration:none;"><strong>BOJ's Split Vote on Rates Marks Most Hawkish Divide of Ueda Era</strong></a> <span style="font-size:10px; color:#4a5568;">— Bloomberg · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/news/dollar-set-weekly-gain-stalled-010918307.html" style="color:#bee3f8; text-decoration:none;"><strong>Dollar softens but heads for weekly gain amid Middle East uncertainty</strong></a> <span style="font-size:10px; color:#4a5568;">— Reuters · 04-24</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Euro FX</div>
+      <div class="card-category cat-fx">EUR/USD</div>
+    </div>
+    <div class="card-price">1.1714</div>
+    <div class="card-unit">USD per EUR · CME 6E</div>
+    <span class="card-change up">▲ +0.06% (24h)</span><span style="font-size:11px; color:#fc8181; margin-left:6px;">-0.6%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+1.5%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,28.0 8.5,22.5 16.9,25.3 25.4,9.0 33.8,3.7 42.3,2.0 50.8,6.6 59.2,13.8 67.7,6.3 76.2,13.3 84.6,19.9 93.1,23.7 101.5,19.8 110.0,18.6" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-neutral">중립</span> <a href="https://finance.yahoo.com/sectors/energy/articles/eni-raises-share-buyback-plan-163229029.html" style="color:#bee3f8; text-decoration:none;"><strong>Eni Raises Share Buyback Plan to $3.3B</strong></a> <span style="font-size:10px; color:#4a5568;">— Rigzone.com · 04-27</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/news/dollar-set-weekly-gain-stalled-010918307.html" style="color:#bee3f8; text-decoration:none;"><strong>Dollar softens but heads for weekly gain amid Middle East uncertainty</strong></a> <span style="font-size:10px; color:#4a5568;">— Reuters · 04-24</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/news/us-dollar-edges-higher-iran-084015564.html" style="color:#bee3f8; text-decoration:none;"><strong>US dollar edges higher as Iran ceasefire deadline approaches</strong></a> <span style="font-size:10px; color:#4a5568;">— Reuters · 04-21</span></div></div>
+  </div>
+
+</div>
+
+<!-- ===== 귀금속 ===== -->
+<div class="section-title">🥇 귀금속 선물 (Metals Futures) — COMEX</div>
+<div class="grid grid-2col">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Gold (금)</div>
+      <div class="card-category cat-metal">XAU · GC</div>
+    </div>
+    <div class="card-price">$4,593.10</div>
+    <div class="card-unit">USD per troy oz · COMEX GC</div>
+    <span class="card-change down">▼ -1.76% (24h)</span><span style="font-size:11px; color:#fc8181; margin-left:6px;">-2.2%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+4.4%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,8.4 8.5,11.4 16.9,13.3 25.4,5.2 33.8,7.7 42.3,9.1 50.8,2.0 59.2,7.0 67.7,17.6 76.2,14.3 84.6,17.0 93.1,15.3 101.5,19.9 110.0,28.0" fill="none" stroke="#fc8181" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bearish">약세</span> <a href="https://finance.yahoo.com/markets/article/gold-silver-plunge-amid-us-iran-stalemate-155453396.html" style="color:#bee3f8; text-decoration:none;"><strong>Gold, silver plunge amid US-Iran stalemate</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/personal-finance/investing/article/gold-and-silver-prices-today-tuesday-april-28-prices-fall-as-inflation-pressure-mounts-110827405.html" style="color:#bee3f8; text-decoration:none;"><strong>Gold and silver prices today, Tuesday, April 28: Prices fall as inflation pressure mounts</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Personal Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/stocks/articles/rbc-maintains-seabridge-gold-apos-150851371.html" style="color:#bee3f8; text-decoration:none;"><strong>RBC Maintains Seabridge Gold's Outperform Rating, US$71.00 Price Target, Ahead of Valor Gold Spin Out</strong></a> <span style="font-size:10px; color:#4a5568;">— MT Newswires · 04-28</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Silver (은)</div>
+      <div class="card-category cat-metal">XAG · SI</div>
+    </div>
+    <div class="card-price">$73.48</div>
+    <div class="card-unit">USD per troy oz · COMEX SI</div>
+    <span class="card-change down">▼ -2.02% (24h)</span><span style="font-size:11px; color:#fc8181; margin-left:6px;">-3.8%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+6.1%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,19.2 8.5,19.1 16.9,21.6 25.4,9.4 33.8,9.1 42.3,11.9 50.8,2.0 59.2,7.6 67.7,18.8 76.2,14.1 84.6,21.8 93.1,18.9 101.5,23.2 110.0,28.0" fill="none" stroke="#fc8181" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bearish">약세</span> <a href="https://finance.yahoo.com/markets/article/gold-silver-plunge-amid-us-iran-stalemate-155453396.html" style="color:#bee3f8; text-decoration:none;"><strong>Gold, silver plunge amid US-Iran stalemate</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/personal-finance/investing/article/gold-and-silver-prices-today-tuesday-april-28-prices-fall-as-inflation-pressure-mounts-110827405.html" style="color:#bee3f8; text-decoration:none;"><strong>Gold and silver prices today, Tuesday, April 28: Prices fall as inflation pressure mounts</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Personal Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/sectors/energy/articles/luca-mining-provides-underground-drill-124755130.html" style="color:#bee3f8; text-decoration:none;"><strong>Luca Mining Provides New Underground Drill Results From Ongoing Exploration Program at Campo Morado Polymetallic VMS mine in Guerrero State</strong></a> <span style="font-size:10px; color:#4a5568;">— MT Newswires · 04-28</span></div></div>
+  </div>
+
+</div>
+
+<!-- ===== 에너지 ===== -->
+<div class="section-title">⚡ 에너지 선물 (Energy Futures) — NYMEX</div>
+<div class="grid grid-2col">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Crude Oil (WTI)</div>
+      <div class="card-category cat-energy">WTI · CL</div>
+    </div>
+    <div class="card-price">$99.95</div>
+    <div class="card-unit">USD per barrel · NYMEX CL</div>
+    <span class="card-change up">▲ +3.71% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+8.5%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+8.2%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,5.4 8.5,7.5 16.9,3.4 25.4,16.0 33.8,16.0 42.3,10.5 50.8,28.0 59.2,18.7 67.7,14.6 76.2,13.3 84.6,8.6 93.1,11.0 101.5,7.8 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <a href="https://finance.yahoo.com/markets/article/gold-silver-plunge-amid-us-iran-stalemate-155453396.html" style="color:#bee3f8; text-decoration:none;"><strong>Gold, silver plunge amid US-Iran stalemate</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/personal-finance/investing/article/bitcoin-and-ethereum-prices-today-tuesday-april-28-2026-values-falling-ahead-of-fed-meeting-114535390.html" style="color:#bee3f8; text-decoration:none;"><strong>Bitcoin and ethereum prices today, Tuesday, April 28, 2026: Values falling ahead of Fed meeting</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Personal Finance · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/economy/article/oil-prices-may-spike-again-as-something-is-off-with-the-current-math-jpmorgan-says-190233992.html" style="color:#bee3f8; text-decoration:none;"><strong>Oil prices may spike again as 'something is off' with the current math, JPMorgan says</strong></a> <span style="font-size:10px; color:#4a5568;">— Yahoo Finance · 04-27</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Natural Gas</div>
+      <div class="card-category cat-energy">NG · Henry Hub</div>
+    </div>
+    <div class="card-price">$2.722</div>
+    <div class="card-unit">USD per MMBtu · NYMEX NG</div>
+    <span class="card-change up">▲ +6.75% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+0.9%(5d)</span><span style="font-size:11px; color:#fc8181; margin-left:6px;">-7.5%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,8.8 8.5,11.7 16.9,14.4 25.4,18.1 33.8,16.6 42.3,11.8 50.8,8.3 59.2,6.3 67.7,5.3 76.2,2.0 84.6,16.1 93.1,28.0 101.5,24.5 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <strong>Solaris Energy Profit Missed the Mark. Why the Stock Is Gaining Anyway.</strong> <span style="font-size:10px; color:#4a5568;">— Barrons.com · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/sectors/energy/articles/lng-prices-third-since-war-140500329.html" style="color:#bee3f8; text-decoration:none;"><strong>LNG Prices Are Up a Third Since the War Began. Here's What It Means for Your Portfolio.</strong></a> <span style="font-size:10px; color:#4a5568;">— Motley Fool · 04-28</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/sectors/energy/articles/ng-energy-14-announces-significant-135918408.html" style="color:#bee3f8; text-decoration:none;"><strong>NG Energy Up 14% As Announces "Significant" New Gas Discovery In Colombia, Graduating To TSX This Week</strong></a> <span style="font-size:10px; color:#4a5568;">— MT Newswires · 04-28</span></div></div>
+  </div>
+
+</div>
+
+<!-- ===== 곡물 ===== -->
+<div class="section-title">🌾 곡물 선물 (Grain Futures) — CBOT (CME Group)</div>
+<div class="grid">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Corn (옥수수)</div>
+      <div class="card-category cat-grain">ZC · CBOT</div>
+    </div>
+    <div class="card-price">$474.50</div>
+    <div class="card-unit">USD per bushel · CBOT ZC</div>
+    <span class="card-change up">▲ +2.98% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+4.6%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+2.6%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,25.2 8.5,27.4 16.9,28.0 25.4,25.9 33.8,19.6 42.3,21.7 50.8,21.5 59.2,19.1 67.7,17.8 76.2,17.4 84.6,16.4 93.1,16.8 101.5,12.4 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <strong>MAHA Moms Are Protesting Against Pesticides</strong> <span style="font-size:10px; color:#4a5568;">— The Wall Street Journal · 04-27</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <strong>‘Inflation Will Come’ From Iran War, PepsiCo Says</strong> <span style="font-size:10px; color:#4a5568;">— The Wall Street Journal · 04-16</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/commodities/articles/corn-rallying-wednesday-172915914.html" style="color:#bee3f8; text-decoration:none;"><strong>Corn Rallying on Wednesday</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-15</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Soybeans (대두)</div>
+      <div class="card-category cat-grain">ZS · CBOT</div>
+    </div>
+    <div class="card-price">$1,188.00</div>
+    <div class="card-unit">USD per bushel · CBOT ZS</div>
+    <span class="card-change up">▲ +0.91% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+1.1%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+2.9%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,21.7 8.5,12.6 16.9,24.3 25.4,28.0 33.8,20.2 42.3,23.0 50.8,20.0 59.2,21.3 67.7,13.7 76.2,22.4 84.6,26.5 93.1,23.0 101.5,11.3 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <a href="https://finance.yahoo.com/markets/commodities/articles/soybean-meal-prices-start-climbing-150822285.html" style="color:#bee3f8; text-decoration:none;"><strong>Soybean Meal Prices Should Start Climbing Higher as Spreaders Unwind Trades, Crush Stays Strong</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-27</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/commodities/articles/soybeans-face-modest-pressure-thursday-221142001.html" style="color:#bee3f8; text-decoration:none;"><strong>Soybeans Face Modest Pressure on Thursday</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-23</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/commodities/articles/soybeans-feeling-pressure-thursday-171557710.html" style="color:#bee3f8; text-decoration:none;"><strong>Soybeans Feeling Pressure on Thursday</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-23</span></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-name">Wheat (밀)</div>
+      <div class="card-category cat-grain">ZW · CBOT SRW</div>
+    </div>
+    <div class="card-price">$652.00</div>
+    <div class="card-unit">USD per bushel · CBOT ZW</div>
+    <span class="card-change up">▲ +4.91% (24h)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+7.8%(5d)</span><span style="font-size:11px; color:#68d391; margin-left:6px;">+10.5%(30d)</span>
+    <div class="sparkline-row"><svg width="110" height="30" style="vertical-align:middle; margin-left:8px; overflow:visible;"><polyline points="0.0,26.9 8.5,28.0 16.9,24.4 25.4,21.3 33.8,20.7 42.3,19.2 50.8,21.5 59.2,19.7 67.7,17.1 76.2,18.9 84.6,15.2 93.1,16.0 101.5,11.8 110.0,2.0" fill="none" stroke="#68d391" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+    <hr class="divider">
+    <div class="news-block">
+      <div class="news-item"><span class="tag tag-bullish">강세</span> <a href="https://finance.yahoo.com/markets/commodities/articles/wheat-holds-gains-monday-crop-221238750.html" style="color:#bee3f8; text-decoration:none;"><strong>Wheat Holds for Gains on Monday, as Crop Ratings Remain Steady</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-27</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/commodities/articles/wheat-posting-monday-gains-172245552.html" style="color:#bee3f8; text-decoration:none;"><strong>Wheat Posting Monday Gains</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-27</span></div>
+      <div class="news-item"><span class="tag tag-neutral">뉴스</span> <a href="https://finance.yahoo.com/markets/commodities/articles/wheat-holding-firm-monday-morning-122928829.html" style="color:#bee3f8; text-decoration:none;"><strong>Wheat Holding Firm on Monday Morning</strong></a> <span style="font-size:10px; color:#4a5568;">— Barchart · 04-27</span></div></div>
+  </div>
+
+</div>
+
+<!-- ===== 시장 동향 분석 ===== -->
+<div class="section-title">🔑 시장 동향 분석</div>
+<div class="macro-section">
+  <div class="macro-card">
+    <h3>① 통화 (FX) 시장 동향</h3>
+    <p>AUD/USD <span class="key-point">0.7182</span> (5d: 0.1%) &nbsp;·&nbsp;
+       EUR/USD <span class="key-point">1.1714</span> (5d: -0.6%) &nbsp;·&nbsp;
+       USD/JPY <span class="key-point">158.73</span>.
+       주요국 중앙은행 정책 기대 및 에너지 가격 동향이 환율 방향성을 결정.</p>
+    <div class="factor-row">
+      <span class="factor-chip ">AUD/USD +0.1%(5d)</span> <span class="factor-chip red">EUR/USD -0.6%(5d)</span> <span class="factor-chip ">USD/JPY 158.73 (+0.4% 5d)</span>
+    </div>
+  </div>
+  <div class="macro-card">
+    <h3>② 에너지 시장 동향</h3>
+    <p>WTI 원유 <span class="key-point">$99.95/배럴</span> (5d: 8.5%) &nbsp;·&nbsp;
+       천연가스 <span class="key-point">$2.722/MMBtu</span> (5d: 0.9%). 에너지 강세 — 공급 우려 또는 수요 증가.</p>
+    <div class="factor-row">
+      <span class="factor-chip green">WTI 원유 +8.5%(5d)</span> <span class="factor-chip green">천연가스 +0.9%(5d)</span>
+    </div>
+  </div>
+  <div class="macro-card">
+    <h3>③ 귀금속 시장 동향</h3>
+    <p>금 <span class="key-point">$4,593.10/oz</span> (5d: -2.2%, 30d: 4.4%) &nbsp;·&nbsp;
+       은 <span class="key-point">$73.48/oz</span> (5d: -3.8%). 위험선호 개선 또는 달러 강세.</p>
+    <div class="factor-row">
+      <span class="factor-chip red">금 -2.2%(5d)</span> <span class="factor-chip red">은 -3.8%(5d)</span>
+    </div>
+  </div>
+  <div class="macro-card">
+    <h3>④ 곡물 시장 동향</h3>
+    <p>옥수수 <span class="key-point">$474.50/bu</span> (5d: 4.6%) &nbsp;·&nbsp;
+       대두 <span class="key-point">$1,188.00/bu</span> (5d: 1.1%) &nbsp;·&nbsp;
+       밀 <span class="key-point">$652.00/bu</span> (5d: 7.8%).
+       USDA WASDE 수급 전망, 날씨·작황 변수 및 비료 가격이 방향성을 결정.</p>
+    <div class="factor-row">
+      <span class="factor-chip green">옥수수 +4.6%(5d)</span> <span class="factor-chip green">대두 +1.1%(5d)</span> <span class="factor-chip green">밀 +7.8%(5d)</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- 가격 요약 테이블 -->
+<div class="section-title">📋 가격 현황 요약표</div>
+<div style="padding: 16px 48px 32px; overflow-x:auto;">
+  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead>
+      <tr style="background:#1a1f2e; border-bottom:2px solid #2d3748;">
+        <th style="text-align:left; padding:10px 14px; color:#718096; font-weight:600;">자산</th>
+        <th style="text-align:left; padding:10px 14px; color:#718096; font-weight:600;">카테고리</th>
+        <th style="text-align:right; padding:10px 14px; color:#718096; font-weight:600;">현재가</th>
+        <th style="text-align:left; padding:10px 14px; color:#718096; font-weight:600;">24h 등락</th>
+        <th style="text-align:left; padding:10px 14px; color:#718096; font-weight:600;">5일 추세</th>
+        <th style="text-align:left; padding:10px 14px; color:#718096; font-weight:600;">30일 추세</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #1a202c;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Australian Dollar</td>
+        <td style="padding:10px 14px; color:#63b3ed;">FX</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">0.7182</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +0.54%</td><td style="padding:10px 14px; color:#a0aec0;">↔ 보합 (+0.1%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+1.0%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c; background:#0f1117;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Japanese Yen</td>
+        <td style="padding:10px 14px; color:#63b3ed;">FX</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">158.73 JPY/USD</td>
+        <td style="padding:10px 14px; color:#fc8181;">▼ -0.02%</td><td style="padding:10px 14px; color:#a0aec0;">↔ 보합 (+0.4%)</td><td style="padding:10px 14px; color:#a0aec0;">↔ 보합 (+0.4%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Euro FX</td>
+        <td style="padding:10px 14px; color:#63b3ed;">FX</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">1.1714</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +0.06%</td><td style="padding:10px 14px; color:#a0aec0;">↔ 보합 (-0.6%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+1.5%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c; background:#0f1117;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Gold</td>
+        <td style="padding:10px 14px; color:#b794f4;">귀금속</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$4,593.10</td>
+        <td style="padding:10px 14px; color:#fc8181;">▼ -1.76%</td><td style="padding:10px 14px; color:#fc8181;">▼ 약세 (-2.2%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+4.4%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Silver</td>
+        <td style="padding:10px 14px; color:#b794f4;">귀금속</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$73.48</td>
+        <td style="padding:10px 14px; color:#fc8181;">▼ -2.02%</td><td style="padding:10px 14px; color:#fc8181;">▼ 약세 (-3.8%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+6.1%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c; background:#0f1117;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Crude Oil (WTI)</td>
+        <td style="padding:10px 14px; color:#68d391;">에너지</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$99.95</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +3.71%</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+8.5%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+8.2%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Natural Gas</td>
+        <td style="padding:10px 14px; color:#68d391;">에너지</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$2.722</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +6.75%</td><td style="padding:10px 14px; color:#a0aec0;">↔ 보합 (+0.9%)</td><td style="padding:10px 14px; color:#fc8181;">▼ 약세 (-7.5%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c; background:#0f1117;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Corn</td>
+        <td style="padding:10px 14px; color:#9ae6b4;">곡물</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$474.50/bu</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +2.98%</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+4.6%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+2.6%)</td>
+      </tr>
+      <tr style="border-bottom:1px solid #1a202c;">
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Soybeans</td>
+        <td style="padding:10px 14px; color:#9ae6b4;">곡물</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$1,188.00/bu</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +0.91%</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+1.1%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+2.9%)</td>
+      </tr>
+      <tr>
+        <td style="padding:10px 14px; color:#e2e8f0; font-weight:600;">Wheat</td>
+        <td style="padding:10px 14px; color:#9ae6b4;">곡물</td>
+        <td style="padding:10px 14px; text-align:right; color:#f7fafc; font-weight:700;">$652.00/bu</td>
+        <td style="padding:10px 14px; color:#68d391;">▲ +4.91%</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+7.8%)</td><td style="padding:10px 14px; color:#68d391;">▲ 강세 (+10.5%)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="sources">
+  <h4>📎 데이터 출처</h4>
+  <a href="https://finance.yahoo.com/quote/AUDUSD=X">Yahoo Finance – AUD/USD</a>
+  <a href="https://finance.yahoo.com/quote/JPYUSD=X">Yahoo Finance – JPY/USD</a>
+  <a href="https://finance.yahoo.com/quote/EURUSD=X">Yahoo Finance – EUR/USD</a>
+  <a href="https://finance.yahoo.com/quote/GC=F">Yahoo Finance – Gold</a>
+  <a href="https://finance.yahoo.com/quote/SI=F">Yahoo Finance – Silver</a>
+  <a href="https://finance.yahoo.com/quote/CL=F">Yahoo Finance – Crude Oil</a>
+  <a href="https://finance.yahoo.com/quote/NG=F">Yahoo Finance – Natural Gas</a>
+  <a href="https://finance.yahoo.com/quote/ZC=F">Yahoo Finance – Corn</a>
+  <a href="https://finance.yahoo.com/quote/ZS=F">Yahoo Finance – Soybeans</a>
+  <a href="https://finance.yahoo.com/quote/ZW=F">Yahoo Finance – Wheat</a>
+</div>
+
+<div class="footer">
+  본 보고서는 2026년 04월 28일 (Tue) 기준 Yahoo Finance 데이터를 바탕으로 자동 생성되었습니다 (조회 시간: 1.1초).
+  투자 조언이 아니며, 실제 투자 결정은 전문가와 상담하시기 바랍니다.
+</div>
+
+<script>
+function refreshPage() {
+  var btn = document.querySelector('.refresh-btn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ 조회 중...';
+  document.getElementById('loading-overlay').style.display = 'flex';
+  window.location.href = '/?t=' + Date.now();
+}
+</script>
+
+</body>
+</html>
