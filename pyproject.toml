@@ -1,2 +1,13 @@
+[project]
+name = "financial-report"
+version = "1.0.0"
+description = "선물 시장 보고서 & 옵션 매도 신호봇"
+requires-python = ">=3.9"
+dependencies = [
+    "flask",
+    "yfinance",
+    "pytz",
+]
+
 [tool.vercel]
 entrypoint = "futures_report_web:app"
