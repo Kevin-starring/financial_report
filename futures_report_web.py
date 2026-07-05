@@ -723,6 +723,7 @@ def generate_report_file(output_path="report.html"):
 app = Flask(__name__)
 
 @app.route('/')
+@app.route('/index.html')
 def index():
     sgt       = pytz.timezone("Asia/Singapore")
     now_sgt   = datetime.now(sgt)
@@ -734,6 +735,16 @@ def index():
     gen_time = round((datetime.now() - t0).total_seconds(), 1)
 
     html = build_html(prices, news, today_str, gen_time)
+    return Response(html, content_type='text/html; charset=utf-8')
+
+@app.route('/options')
+@app.route('/options.html')
+def options():
+    import time as _time
+    from options_signal_bot import run_analysis, build_html as build_options_html
+    t0 = _time.time()
+    results = run_analysis()
+    html = build_options_html(results, gen_seconds=_time.time() - t0)
     return Response(html, content_type='text/html; charset=utf-8')
 
 # Vercel serverless handler
