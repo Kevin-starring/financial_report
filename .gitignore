@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+_site/
+report.html
+options.html

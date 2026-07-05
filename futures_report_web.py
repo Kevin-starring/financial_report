@@ -305,6 +305,8 @@ body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #
 .header h1 { font-size: 26px; font-weight: 700; color: #f7fafc; letter-spacing: -0.5px; }
 .header .subtitle { margin-top: 6px; font-size: 13px; color: #718096; }
 .header .date-badge { display: inline-block; margin-top: 12px; background: #2d3748; border: 1px solid #4a5568; border-radius: 20px; padding: 4px 14px; font-size: 12px; color: #a0aec0; }
+.nav-link { display: inline-block; margin-top: 12px; margin-left: 8px; font-size: 12px; color: #63b3ed; text-decoration: none; border: 1px solid #2d3748; border-radius: 20px; padding: 4px 14px; }
+.nav-link:hover { border-color: #63b3ed; }
 .refresh-btn { background: linear-gradient(135deg, #2b6cb0, #1a365d); border: 1px solid #4a5568; color: #bee3f8; border-radius: 10px; padding: 12px 22px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; white-space: nowrap; margin-top: 4px; }
 .refresh-btn:hover { background: linear-gradient(135deg, #3182ce, #2b6cb0); border-color: #63b3ed; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -419,6 +421,7 @@ def build_html(p, news, today_str, gen_time):
       <h1>📊 글로벌 선물·옵션 시장 동향 보고서</h1>
       <div class="subtitle">통화 · 귀금속 · 에너지 · 곡물 선물 가격 및 주요 뉴스 분석</div>
       <div class="date-badge">🗓 {today_str} 기준 (싱가포르 시간 오후 6시)</div>
+      <a class="nav-link" href="./options.html">📡 옵션 매도 신호봇 →</a>
     </div>
     <div>
       <button class="refresh-btn" onclick="refreshPage()">🔄 새로고침</button>
@@ -720,6 +723,7 @@ def generate_report_file(output_path="report.html"):
 app = Flask(__name__)
 
 @app.route('/')
+@app.route('/index.html')
 def index():
     sgt       = pytz.timezone("Asia/Singapore")
     now_sgt   = datetime.now(sgt)
@@ -731,7 +735,22 @@ def index():
     gen_time = round((datetime.now() - t0).total_seconds(), 1)
 
     html = build_html(prices, news, today_str, gen_time)
-    return Response(html, content_type='text/html; charset=utf-8')
+    resp = Response(html, content_type='text/html; charset=utf-8')
+    # Vercel CDN 캐시: 30분간 캐시 응답, 이후 백그라운드 재생성 (타임아웃·속도 완화)
+    resp.headers['Cache-Control'] = 'public, s-maxage=1800, stale-while-revalidate=86400'
+    return resp
+
+@app.route('/options')
+@app.route('/options.html')
+def options():
+    import time as _time
+    from options_signal_bot import run_analysis, build_html as build_options_html
+    t0 = _time.time()
+    results = run_analysis()
+    html = build_options_html(results, gen_seconds=_time.time() - t0)
+    resp = Response(html, content_type='text/html; charset=utf-8')
+    resp.headers['Cache-Control'] = 'public, s-maxage=1800, stale-while-revalidate=86400'
+    return resp
 
 # Vercel serverless handler
 handler = app

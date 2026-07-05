@@ -2,6 +2,9 @@ name: Generate Futures Report
 
 on:
   workflow_dispatch:
+  schedule:
+    # 매일 미국 장 마감 후 (UTC 21:10 = 한국 새벽 6:10) 자동 생성
+    - cron: "10 21 * * 1-5"
 
 permissions:
   contents: write
@@ -26,6 +29,9 @@ jobs:
         run: |
           mkdir -p _site
           python futures_report_web.py --generate _site/index.html
+
+      - name: Generate options signal report
+        run: python options_signal_bot.py --generate _site/options.html
 
       - name: Deploy to GitHub Pages (gh-pages branch)
         uses: peaceiris/actions-gh-pages@v4

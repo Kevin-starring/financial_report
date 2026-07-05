@@ -1,0 +1,2 @@
+[tool.vercel]
+entrypoint = "futures_report_web:app"
