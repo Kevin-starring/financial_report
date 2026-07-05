@@ -735,7 +735,10 @@ def index():
     gen_time = round((datetime.now() - t0).total_seconds(), 1)
 
     html = build_html(prices, news, today_str, gen_time)
-    return Response(html, content_type='text/html; charset=utf-8')
+    resp = Response(html, content_type='text/html; charset=utf-8')
+    # Vercel CDN 캐시: 30분간 캐시 응답, 이후 백그라운드 재생성 (타임아웃·속도 완화)
+    resp.headers['Cache-Control'] = 'public, s-maxage=1800, stale-while-revalidate=86400'
+    return resp
 
 @app.route('/options')
 @app.route('/options.html')
@@ -745,7 +748,9 @@ def options():
     t0 = _time.time()
     results = run_analysis()
     html = build_options_html(results, gen_seconds=_time.time() - t0)
-    return Response(html, content_type='text/html; charset=utf-8')
+    resp = Response(html, content_type='text/html; charset=utf-8')
+    resp.headers['Cache-Control'] = 'public, s-maxage=1800, stale-while-revalidate=86400'
+    return resp
 
 # Vercel serverless handler
 handler = app
