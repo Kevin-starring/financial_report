@@ -4,9 +4,11 @@
 직접 투자를 하지 않고, 옵션 "매도(Sell)" 관점에서 기회가 되는 신호를
 탐지하여 추천 사유와 함께 모바일 친화 HTML 보고서로 생성한다.
 
-- 대상: 옵션이 상장된 원자재/외환/농산물/금속/에너지 ETF (선물 프록시)
-- 만기: 차월물(다음 달) ~ 차차월물(다다음 달) 만기만 추천
-- 전략: 풋매도(현금담보), 콜매도, 양매도(스트랭글)
+- 대상: 시장 동향 보고서와 동일한 10개 선물 종목 (통화·귀금속·에너지·곡물)
+- 만기: 차월물(다음 달) ~ 차차월물(다다음 달)만 추천
+- 전략: 풋매도, 콜매도, 양매도(스트랭글)
+- 행사가·프리미엄: 선물 옵션 체인은 무료 데이터로 제공되지 않으므로
+  역사적 변동성(HV) 기반 블랙-76 모델 추정치로 제시 (보고서에 명시)
 - 실행: python options_signal_bot.py --generate options.html
         python options_signal_bot.py  →  http://127.0.0.1:8081 (로컬 확인용)
 """
@@ -15,7 +17,7 @@ import math
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import pytz
 
@@ -25,23 +27,19 @@ try:
 except Exception:
     yf = None
 
-# ── 유니버스: 옵션이 상장된 ETF (선물 시장 프록시) ─────────────────
+# ── 유니버스: 시장 동향 보고서와 동일한 선물 종목 ────────────────────
+# key: (yfinance 심볼, 한글명, 카테고리, 설명, 행사가 간격, 표시 소수점)
 UNIVERSE = {
-    # key: (yfinance 심볼, 한글명, 카테고리, 기초자산 설명)
-    "USO":  ("USO",  "WTI 원유",     "에너지",  "United States Oil Fund — WTI 원유 선물"),
-    "UNG":  ("UNG",  "천연가스",     "에너지",  "United States Natural Gas Fund — 헨리허브 천연가스 선물"),
-    "GLD":  ("GLD",  "금",           "금속",    "SPDR Gold Shares — 금 현물"),
-    "SLV":  ("SLV",  "은",           "금속",    "iShares Silver Trust — 은 현물"),
-    "CPER": ("CPER", "구리",         "금속",    "United States Copper Index Fund — 구리 선물"),
-    "CORN": ("CORN", "옥수수",       "농산물",  "Teucrium Corn Fund — CBOT 옥수수 선물"),
-    "WEAT": ("WEAT", "밀",           "농산물",  "Teucrium Wheat Fund — CBOT 밀 선물"),
-    "SOYB": ("SOYB", "대두",         "농산물",  "Teucrium Soybean Fund — CBOT 대두 선물"),
-    "DBA":  ("DBA",  "농산물 바스켓", "농산물",  "Invesco DB Agriculture Fund — 농산물 선물 바스켓"),
-    "FXE":  ("FXE",  "유로 (EUR)",   "외환",    "Invesco CurrencyShares Euro Trust — EUR/USD"),
-    "FXY":  ("FXY",  "엔 (JPY)",     "외환",    "Invesco CurrencyShares Japanese Yen — JPY/USD"),
-    "FXA":  ("FXA",  "호주달러 (AUD)","외환",   "Invesco CurrencyShares Australian Dollar — AUD/USD"),
-    "UUP":  ("UUP",  "달러인덱스",   "외환",    "Invesco DB US Dollar Index Bullish — 달러인덱스 선물"),
-    "DBC":  ("DBC",  "원자재 종합",  "원자재",  "Invesco DB Commodity Index — 원자재 선물 종합"),
+    "AUD_USD": ("AUDUSD=X", "호주달러 (AUD/USD)", "외환",   "CME 6A 통화선물 옵션",        0.005,  4),
+    "USD_JPY": ("USDJPY=X", "엔 (USD/JPY)",      "외환",   "CME 6J 통화선물 옵션 (역수 호가 유의)", 1.0, 2),
+    "EUR_USD": ("EURUSD=X", "유로 (EUR/USD)",    "외환",   "CME 6E 통화선물 옵션",        0.005,  4),
+    "GOLD":    ("GC=F",     "금",                "금속",   "COMEX GC 금 선물 옵션",       25.0,   2),
+    "SILVER":  ("SI=F",     "은",                "금속",   "COMEX SI 은 선물 옵션",       0.5,    2),
+    "CRUDE":   ("CL=F",     "WTI 원유",          "에너지", "NYMEX CL 원유 선물 옵션",     0.5,    2),
+    "NATGAS":  ("NG=F",     "천연가스",          "에너지", "NYMEX NG 천연가스 선물 옵션", 0.1,    3),
+    "CORN":    ("ZC=F",     "옥수수",            "농산물", "CBOT ZC 옥수수 선물 옵션 (¢/bu)", 10.0, 2),
+    "SOY":     ("ZS=F",     "대두",              "농산물", "CBOT ZS 대두 선물 옵션 (¢/bu)",   20.0, 2),
+    "WHEAT":   ("ZW=F",     "밀",                "농산물", "CBOT ZW 밀 선물 옵션 (¢/bu)",     10.0, 2),
 }
 
 CATEGORY_COLORS = {
@@ -52,10 +50,9 @@ CATEGORY_COLORS = {
     "원자재":  ("cat-comm",   "#f6ad55"),
 }
 
-RISK_FREE_RATE = 0.04          # 델타 추정용 무위험 금리 (근사)
-MIN_OPEN_INTEREST = 50         # 최소 미결제약정 (유동성 필터)
-MIN_BID = 0.05                 # 최소 매수호가 (프리미엄이 거의 없는 행사가 제외)
-TARGET_DELTA = 0.30            # 매도 후보 행사가의 목표 델타 상한
+RISK_FREE_RATE = 0.04          # 할인·델타 추정용 무위험 금리 (근사)
+TARGET_DELTA = 0.25            # 매도 후보 행사가의 목표 델타 (보수적 OTM)
+MAX_DELTA = 0.30               # 델타 상한
 SIGNAL_THRESHOLD = 55          # 이 점수 이상만 "추천 신호"로 표시
 
 
@@ -64,14 +61,29 @@ def expiry_window(today=None):
     """오늘 기준 다음 달 1일 ~ 다다음 달 말일 범위를 반환."""
     today = today or date.today()
     y, m = today.year, today.month
-    # 차월물 시작 (다음 달 1일)
     m1, y1 = (m + 1, y) if m < 12 else (1, y + 1)
-    # 차차월물의 다음 달 1일 (배타적 상한)
     m3, y3 = m1 + 2, y1
     while m3 > 12:
         m3 -= 12
         y3 += 1
     return date(y1, m1, 1), date(y3, m3, 1)
+
+
+def third_friday(year, month):
+    """해당 월의 세 번째 금요일 (대표 만기일 근사치 — 실제 만기는 상품별 상이)."""
+    d = date(year, month, 1)
+    offset = (4 - d.weekday()) % 7  # 첫 금요일까지
+    return d + timedelta(days=offset + 14)
+
+
+def target_expiries(today=None):
+    """차월물·차차월물의 대표 만기일 목록."""
+    today = today or date.today()
+    w_start, _ = expiry_window(today)
+    first = third_friday(w_start.year, w_start.month)
+    m2, y2 = (w_start.month + 1, w_start.year) if w_start.month < 12 else (1, w_start.year + 1)
+    second = third_friday(y2, m2)
+    return [first, second]
 
 
 def expiry_label(exp_date, today=None):
@@ -131,7 +143,7 @@ def _hist_vol(closes, period=20):
 
 
 def _hv_rank(closes, period=20):
-    """현재 HV20이 지난 1년 HV20 분포에서 몇 %ile인지 (IV 환경 프록시)"""
+    """현재 HV20이 지난 1년 HV20 분포에서 몇 %ile인지 (변동성 환경 지표)"""
     if len(closes) < period + 30:
         return None
     hvs = []
@@ -169,16 +181,32 @@ def compute_indicators(closes):
     }
 
 
-# ── 블랙-숄즈 델타 (scipy 없이 math.erf 사용) ─────────────────────
+# ── 블랙-76 모델 (선물 옵션 가격·델타, scipy 없이 math.erf 사용) ────
 def _norm_cdf(x):
     return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
 
-def bs_delta(spot, strike, dte_years, iv, is_call, r=RISK_FREE_RATE):
-    if spot <= 0 or strike <= 0 or dte_years <= 0 or not iv or iv <= 0:
+def b76_d1(fut, strike, t_years, iv):
+    return (math.log(fut / strike) + (iv * iv / 2) * t_years) / (iv * math.sqrt(t_years))
+
+
+def b76_delta(fut, strike, t_years, iv, is_call, r=RISK_FREE_RATE):
+    if fut <= 0 or strike <= 0 or t_years <= 0 or not iv or iv <= 0:
         return None
-    d1 = (math.log(spot / strike) + (r + iv * iv / 2) * dte_years) / (iv * math.sqrt(dte_years))
-    return _norm_cdf(d1) if is_call else _norm_cdf(d1) - 1
+    d1 = b76_d1(fut, strike, t_years, iv)
+    disc = math.exp(-r * t_years)
+    return disc * _norm_cdf(d1) if is_call else disc * (_norm_cdf(d1) - 1)
+
+
+def b76_price(fut, strike, t_years, iv, is_call, r=RISK_FREE_RATE):
+    if fut <= 0 or strike <= 0 or t_years <= 0 or not iv or iv <= 0:
+        return None
+    d1 = b76_d1(fut, strike, t_years, iv)
+    d2 = d1 - iv * math.sqrt(t_years)
+    disc = math.exp(-r * t_years)
+    if is_call:
+        return disc * (fut * _norm_cdf(d1) - strike * _norm_cdf(d2))
+    return disc * (strike * _norm_cdf(-d2) - fut * _norm_cdf(-d1))
 
 
 # ── 데이터 조회 ────────────────────────────────────────────────
@@ -195,90 +223,47 @@ def fetch_history(symbol, retries=2):
     return None
 
 
-def fetch_chains(symbol, window_start, window_end, retries=2):
-    """차월물~차차월물 범위의 만기별 옵션 체인 목록을 반환."""
-    results = []
-    for attempt in range(retries + 1):
-        try:
-            tkr = yf.Ticker(symbol)
-            expirations = tkr.options or []
-            break
-        except Exception:
-            expirations = []
-            if attempt < retries:
-                time.sleep(1.5 * (attempt + 1))
-    for exp_str in expirations:
-        try:
-            exp = datetime.strptime(exp_str, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if not (window_start <= exp < window_end):
-            continue
-        try:
-            chain = tkr.option_chain(exp_str)
-            results.append({
-                "expiry": exp,
-                "calls": chain.calls.to_dict("records"),
-                "puts": chain.puts.to_dict("records"),
-            })
-        except Exception:
-            continue
-    return results
-
-
-# ── 매도 후보 행사가 선정 ──────────────────────────────────────
-def _mid(row):
-    bid = row.get("bid") or 0
-    ask = row.get("ask") or 0
-    if bid > 0 and ask > 0:
-        return (bid + ask) / 2
-    last = row.get("lastPrice") or 0
-    return last if last > 0 else None
-
-
-def pick_short_candidate(rows, spot, expiry, is_call, today=None):
-    """목표 델타(≤0.30) 부근의 OTM 행사가 중 프리미엄이 가장 좋은 후보 선택."""
+# ── 매도 후보 행사가 산출 (HV 기반 모델 추정) ─────────────────────
+def make_candidate(key, ind, expiry, is_call, today=None):
+    """목표 델타(≈0.25) 부근의 OTM 행사가를 행사가 간격에 맞춰 산출하고
+    블랙-76으로 프리미엄을 추정한다."""
     today = today or date.today()
     dte = (expiry - today).days
     if dte <= 0:
         return None
     t_years = dte / 365.0
+    hv = ind.get("hv20")
+    if not hv or hv <= 0:
+        return None
+    iv = hv / 100.0  # HV20을 IV 프록시로 사용
+    spot = ind["price"]
+    step = UNIVERSE[key][4]
+
+    # ATM에서 OTM 방향으로 행사가 간격씩 이동하며 목표 델타 이하 첫 행사가 선택
+    base = round(spot / step) * step
     best = None
-    for row in rows:
-        strike = row.get("strike")
-        iv = row.get("impliedVolatility")
-        oi = row.get("openInterest") or 0
-        bid = row.get("bid") or 0
-        if not strike or not iv or iv <= 0.01:
-            continue
-        if is_call and strike <= spot:
-            continue
-        if not is_call and strike >= spot:
-            continue
-        if oi < MIN_OPEN_INTEREST or bid < MIN_BID:
-            continue
-        delta = bs_delta(spot, strike, t_years, iv, is_call)
+    for i in range(1, 200):
+        strike = base + i * step if is_call else base - i * step
+        if strike <= 0:
+            break
+        delta = b76_delta(spot, strike, t_years, iv, is_call)
         if delta is None:
+            break
+        if abs(delta) > MAX_DELTA:
             continue
-        abs_delta = abs(delta)
-        if abs_delta > TARGET_DELTA or abs_delta < 0.08:
-            continue
-        premium = _mid(row)
-        if not premium:
-            continue
-        # 연환산 프리미엄 수익률 (행사가 대비 담보 기준)
+        premium = b76_price(spot, strike, t_years, iv, is_call)
+        if not premium or premium <= 0:
+            break
         yield_pct = premium / strike * 100
-        annualized = yield_pct * 365 / dte
-        cand = {
+        best = {
             "strike": strike, "premium": premium, "delta": delta,
-            "iv": iv * 100, "oi": int(oi), "dte": dte,
-            "yield_pct": yield_pct, "annualized": annualized,
+            "iv": iv * 100, "dte": dte,
+            "yield_pct": yield_pct, "annualized": yield_pct * 365 / dte,
             "otm_pct": abs(strike - spot) / spot * 100,
             "expiry": expiry,
         }
-        # 델타 0.20~0.30 구간에서 연환산 수익률 최대인 것을 선호
-        if best is None or cand["annualized"] > best["annualized"]:
-            best = cand
+        if abs(delta) <= TARGET_DELTA:
+            break  # 목표 델타 도달 — 이 행사가 확정
     return best
 
 
@@ -371,8 +356,8 @@ def score_strangle(ind):
 
 
 def analyze_symbol(key, today=None):
-    """한 종목에 대해 지표 계산 → 체인 조회 → 전략별 신호 생성."""
-    symbol, name_kr, category, desc = UNIVERSE[key]
+    """한 종목에 대해 지표 계산 → 만기별 후보 산출 → 전략별 신호 생성."""
+    symbol, name_kr, category, desc, _, _ = UNIVERSE[key]
     today = today or date.today()
     closes = fetch_history(symbol)
     if not closes:
@@ -381,37 +366,32 @@ def analyze_symbol(key, today=None):
     if not ind:
         return {"key": key, "name": name_kr, "category": category, "error": "데이터 부족"}
 
-    w_start, w_end = expiry_window(today)
-    chains = fetch_chains(symbol, w_start, w_end)
-
     strategies = []
     put_score, put_reasons = score_put_sell(ind)
     call_score, call_reasons = score_call_sell(ind)
     str_score, str_reasons = score_strangle(ind)
 
-    for chain in chains:
-        exp = chain["expiry"]
-        put_cand = pick_short_candidate(chain["puts"], ind["price"], exp, is_call=False, today=today)
-        call_cand = pick_short_candidate(chain["calls"], ind["price"], exp, is_call=True, today=today)
+    for exp in target_expiries(today):
+        put_cand = make_candidate(key, ind, exp, is_call=False, today=today)
+        call_cand = make_candidate(key, ind, exp, is_call=True, today=today)
 
         if put_cand and put_score >= SIGNAL_THRESHOLD:
-            strategies.append(_make_signal("풋매도", put_score, put_reasons, put_cand, ind, today))
+            strategies.append(_make_signal("풋매도", put_score, put_reasons, put_cand, today))
         if call_cand and call_score >= SIGNAL_THRESHOLD:
-            strategies.append(_make_signal("콜매도", call_score, call_reasons, call_cand, ind, today))
+            strategies.append(_make_signal("콜매도", call_score, call_reasons, call_cand, today))
         if put_cand and call_cand and str_score >= SIGNAL_THRESHOLD:
             combo = {
                 "strike": None, "put": put_cand, "call": call_cand,
                 "premium": put_cand["premium"] + call_cand["premium"],
                 "delta": None, "iv": (put_cand["iv"] + call_cand["iv"]) / 2,
-                "oi": min(put_cand["oi"], call_cand["oi"]),
                 "dte": put_cand["dte"], "expiry": exp,
                 "yield_pct": (put_cand["premium"] + call_cand["premium"]) / ind["price"] * 100,
                 "annualized": ((put_cand["premium"] + call_cand["premium"]) / ind["price"] * 100) * 365 / put_cand["dte"],
                 "otm_pct": None,
             }
-            strategies.append(_make_signal("양매도", str_score, str_reasons, combo, ind, today))
+            strategies.append(_make_signal("양매도", str_score, str_reasons, combo, today))
 
-    # 같은 전략이 두 만기 모두에서 나오면 점수·연환산 기준 상위 1개만
+    # 같은 전략이 두 만기 모두에서 나오면 연환산 수익률 기준 상위 1개만
     dedup = {}
     for s in strategies:
         k = s["strategy"]
@@ -420,27 +400,27 @@ def analyze_symbol(key, today=None):
 
     return {
         "key": key, "symbol": symbol, "name": name_kr, "category": category,
-        "desc": desc, "indicators": ind, "signals": sorted(dedup.values(), key=lambda s: -s["score"]),
-        "chains_found": len(chains),
+        "desc": desc, "indicators": ind,
+        "signals": sorted(dedup.values(), key=lambda s: -s["score"]),
     }
 
 
-def _make_signal(strategy, score, reasons, candidate, ind, today):
+def _make_signal(strategy, score, reasons, candidate, today):
     reasons = list(reasons)
     exp = candidate["expiry"]
     label = expiry_label(exp, today)
     reasons.append(
-        f"{label} {exp.strftime('%m/%d')} 만기 (잔존 {candidate['dte']}일) — "
+        f"{label} {exp.strftime('%m월')} 만기 (잔존 약 {candidate['dte']}일) — "
         f"세타(시간가치 소멸)가 본격화되는 30~90일 구간으로 옵션 매도에 적정한 만기"
     )
     if candidate.get("annualized"):
         reasons.append(
-            f"프리미엄 수익률 {candidate['yield_pct']:.2f}% (연환산 약 {candidate['annualized']:.1f}%) — "
-            f"수취 프리미엄 대비 담보 효율 양호"
+            f"추정 프리미엄 수익률 {candidate['yield_pct']:.2f}% (연환산 약 {candidate['annualized']:.1f}%) — "
+            f"역사적 변동성(HV20) 기반 블랙-76 모델 추정치"
         )
     if candidate.get("delta") is not None:
         reasons.append(
-            f"델타 {abs(candidate['delta']):.2f} — 만기 내 행사가 도달 확률 약 {abs(candidate['delta'])*100:.0f}% 수준의 보수적 OTM 행사가"
+            f"추정 델타 {abs(candidate['delta']):.2f} — 만기 내 행사가 도달 확률 약 {abs(candidate['delta'])*100:.0f}% 수준의 보수적 OTM 행사가"
         )
     return {
         "strategy": strategy, "score": min(int(score), 100), "reasons": reasons,
@@ -457,7 +437,7 @@ def run_analysis(today=None):
                 results.append(f.result(timeout=90))
             except Exception as e:
                 key = fs[f]
-                _, name_kr, category, _ = UNIVERSE[key]
+                name_kr, category = UNIVERSE[key][1], UNIVERSE[key][2]
                 results.append({"key": key, "name": name_kr, "category": category, "error": str(e)})
     order = list(UNIVERSE.keys())
     results.sort(key=lambda r: order.index(r["key"]) if r.get("key") in order else 99)
@@ -531,22 +511,28 @@ def _strat_badge(strategy):
     return f'<span class="badge {cls}">{icon}</span>'
 
 
+def _fmt_price(key, val):
+    decimals = UNIVERSE[key][5]
+    return f"{val:,.{decimals}f}"
+
+
 def render_signal_card(asset, sig):
     ind = asset["indicators"]
     cand = sig["candidate"]
+    key = asset["key"]
     cat_cls = CATEGORY_COLORS.get(asset["category"], ("cat-comm",))[0]
     color = _score_color(sig["score"])
     strong_cls = " strong" if sig["score"] >= 75 else ""
 
     if sig["strategy"] == "양매도":
         strike_html = (f'<div class="kv"><div class="k">행사가 (풋/콜)</div>'
-                       f'<div class="v">{cand["put"]["strike"]:g} / {cand["call"]["strike"]:g}</div></div>')
-        delta_html = (f'<div class="kv"><div class="k">델타 (풋/콜)</div>'
+                       f'<div class="v">{_fmt_price(key, cand["put"]["strike"])} / {_fmt_price(key, cand["call"]["strike"])}</div></div>')
+        delta_html = (f'<div class="kv"><div class="k">추정 델타 (풋/콜)</div>'
                       f'<div class="v">{abs(cand["put"]["delta"]):.2f} / {abs(cand["call"]["delta"]):.2f}</div></div>')
     else:
         otm = f'<small> (OTM {cand["otm_pct"]:.1f}%)</small>' if cand.get("otm_pct") is not None else ""
-        strike_html = f'<div class="kv"><div class="k">행사가</div><div class="v">{cand["strike"]:g}{otm}</div></div>'
-        delta_html = f'<div class="kv"><div class="k">델타</div><div class="v">{abs(cand["delta"]):.2f}</div></div>'
+        strike_html = f'<div class="kv"><div class="k">추천 행사가</div><div class="v">{_fmt_price(key, cand["strike"])}{otm}</div></div>'
+        delta_html = f'<div class="kv"><div class="k">추정 델타</div><div class="v">{abs(cand["delta"]):.2f}</div></div>'
 
     reasons_html = "".join(
         f'<div class="reason{" warn" if r.startswith("⚠") else ""}">{r}</div>' for r in sig["reasons"]
@@ -556,11 +542,11 @@ def render_signal_card(asset, sig):
   <div class="sig-card{strong_cls}">
     <div class="sig-head">
       <div><span class="sig-name">{asset["name"]}</span><span class="sig-sym">{asset["symbol"]}</span><br>
-        <span style="font-size:11px;color:#718096;">현재가 ${ind["price"]:,.2f} · {asset["desc"]}</span></div>
+        <span style="font-size:11px;color:#718096;">현재가 {_fmt_price(key, ind["price"])} · {asset["desc"]}</span></div>
       <div class="badges">
         <span class="badge {cat_cls}">{asset["category"]}</span>
         {_strat_badge(sig["strategy"])}
-        <span class="badge exp-badge">{sig["expiry_label"]} {cand["expiry"].strftime("%m/%d")}</span>
+        <span class="badge exp-badge">{sig["expiry_label"]} {cand["expiry"].strftime("%m월")}</span>
       </div>
     </div>
     <div class="score-row">
@@ -569,11 +555,11 @@ def render_signal_card(asset, sig):
     </div>
     <div class="kv-grid">
       {strike_html}
-      <div class="kv"><div class="k">예상 프리미엄</div><div class="v">${cand["premium"]:.2f}<small> /주</small></div></div>
+      <div class="kv"><div class="k">추정 프리미엄</div><div class="v">{cand["premium"]:,.2f}<small> pt</small></div></div>
       <div class="kv"><div class="k">수익률 (연환산)</div><div class="v">{cand["yield_pct"]:.2f}%<small> ({cand["annualized"]:.0f}%/yr)</small></div></div>
       {delta_html}
-      <div class="kv"><div class="k">내재변동성</div><div class="v">{cand["iv"]:.0f}%</div></div>
-      <div class="kv"><div class="k">잔존일수 / OI</div><div class="v">{cand["dte"]}일<small> / {cand["oi"]:,}</small></div></div>
+      <div class="kv"><div class="k">변동성 (HV20)</div><div class="v">{cand["iv"]:.0f}%</div></div>
+      <div class="kv"><div class="k">잔존일수</div><div class="v">약 {cand["dte"]}일</div></div>
     </div>
     <div class="reasons">
       <div class="reasons-title">📋 추천 사유</div>
@@ -589,6 +575,7 @@ def render_watch_row(asset):
         return (f'<tr><td style="color:#e2e8f0;font-weight:600;">{asset["name"]}</td>'
                 f'<td><span class="badge {cat_cls}">{asset["category"]}</span></td>'
                 f'<td colspan="5" style="color:#718096;">{asset.get("error", "데이터 없음")}</td></tr>')
+    key = asset["key"]
     rsi = f'{ind["rsi"]:.0f}' if ind.get("rsi") is not None else "—"
     pct_b = f'{ind["pct_b"]:.2f}' if ind.get("pct_b") is not None else "—"
     hvr = f'{ind["hv_rank"]:.0f}%' if ind.get("hv_rank") is not None else "—"
@@ -599,7 +586,7 @@ def render_watch_row(asset):
     return (f'<tr><td style="color:#e2e8f0;font-weight:600;">{asset["name"]} '
             f'<span style="color:#4a5568;font-size:10px;">{asset["symbol"]}</span></td>'
             f'<td><span class="badge {cat_cls}">{asset["category"]}</span></td>'
-            f'<td style="text-align:right;font-weight:700;color:#f7fafc;">${ind["price"]:,.2f}</td>'
+            f'<td style="text-align:right;font-weight:700;color:#f7fafc;">{_fmt_price(key, ind["price"])}</td>'
             f'<td>{chg_html}</td><td>{rsi}</td><td>{pct_b}</td><td>{hvr}</td>'
             f'<td style="color:{"#68d391" if asset.get("signals") else "#718096"};">{status}</td></tr>')
 
@@ -621,12 +608,12 @@ def build_html(results, today=None, gen_seconds=None):
         banner = (f'<div class="banner"><strong>📡 오늘의 신호 {len(all_signals)}건</strong> — '
                   f'최상위: {top[0]["name"]} {_strat_badge(top[1]["strategy"])} '
                   f'신호 {top[1]["score"]}점 · {top[1]["expiry_label"]} '
-                  f'{top[1]["candidate"]["expiry"].strftime("%m/%d")} 만기</div>')
+                  f'{top[1]["candidate"]["expiry"].strftime("%m월")} 만기</div>')
         cards_html = "".join(render_signal_card(a, s) for a, s in all_signals)
     else:
         banner = ('<div class="banner"><strong>📡 오늘의 신호 없음</strong> — '
                   '현재 기준을 충족하는 옵션 매도 기회가 없습니다. 아래 관찰 리스트에서 지표를 확인하세요.</div>')
-        cards_html = '<div class="empty-note">조건(신호 55점 이상 + 유동성 충족 행사가 존재)을 만족하는 종목이 없습니다.<br>변동성이 낮은 장세에서는 신호가 드물게 발생합니다 — 이는 정상입니다.</div>'
+        cards_html = '<div class="empty-note">조건(신호 55점 이상)을 만족하는 종목이 없습니다.<br>변동성이 낮은 장세에서는 신호가 드물게 발생합니다 — 이는 정상입니다.</div>'
 
     watch_rows = "".join(render_watch_row(a) for a in results)
     gen_note = f" · 생성 {gen_seconds:.0f}초" if gen_seconds else ""
@@ -640,21 +627,21 @@ def build_html(results, today=None, gen_seconds=None):
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="옵션 신호봇">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
-<title>옵션 매도 신호봇 — 원자재·외환·농산물·금속·에너지</title>
+<title>옵션 매도 신호봇 — 통화·귀금속·에너지·곡물 선물 옵션</title>
 <style>{STYLE}</style>
 </head>
 <body>
 
 <div class="header">
   <h1>📡 옵션 매도 신호봇</h1>
-  <div class="subtitle">원자재 · 외환 · 농산물 · 금속 · 에너지 — 차월물~차차월물 옵션 매도 기회 탐지</div>
+  <div class="subtitle">통화 · 귀금속 · 에너지 · 곡물 선물 — 차월물~차차월물 옵션 매도 기회 탐지 (시장 동향 보고서와 동일 종목)</div>
   <div class="date-badge">🗓 {now_str}{gen_note}</div>
   <a class="nav-link" href="./index.html">📊 시장 동향 보고서 →</a>
 </div>
 
 {banner}
 
-<div class="warn-banner">⚠ 본 신호는 자동 생성된 참고 정보이며 투자 권유가 아닙니다. 옵션 매도는 수취 프리미엄 대비 큰 손실이 발생할 수 있는 전략입니다 (풋매도: 행사가까지 하락 시 손실, 콜매도: 무제한 상방 리스크). 실제 매매 전 반드시 직접 검증하세요.</div>
+<div class="warn-banner">⚠ 본 신호는 자동 생성된 참고 정보이며 투자 권유가 아닙니다. 행사가·프리미엄·델타는 역사적 변동성 기반 <strong>모델 추정치</strong>이므로 실제 호가와 다를 수 있고, 표기 만기일은 대표치(셋째 금요일 기준)로 상품별 실제 만기와 다를 수 있습니다. 주문 전 반드시 HTS/거래소에서 실제 옵션 시세를 확인하세요. 옵션 매도는 수취 프리미엄 대비 큰 손실이 발생할 수 있는 전략입니다.</div>
 
 <div class="section-title">🎯 매도 신호 ({_window_label(w_start, w_end)} 만기)</div>
 <div class="cards">
@@ -680,14 +667,15 @@ def build_html(results, today=None, gen_seconds=None):
       <div class="reason">🔴 <strong>콜매도</strong> — 과매수 + 높은 변동성 구간에서 OTM 콜을 매도. 기초자산이 행사가 위로 오르지 않으면 프리미엄 전액이 수익.</div>
       <div class="reason">🟠 <strong>양매도(스트랭글)</strong> — 방향성 없는 횡보 + 변동성 고점 구간에서 OTM 풋·콜 동시 매도. 가격이 두 행사가 사이에 머물면 양쪽 프리미엄 모두 수익.</div>
       <div class="reason"><strong>신호 점수</strong> — RSI·볼린저밴드·변동성 랭크·추세를 종합한 0~100점. 55점 이상만 표시하며 75점 이상은 강한 신호로 강조.</div>
-      <div class="reason"><strong>델타</strong> — 만기 시 행사가 도달(ITM) 확률의 근사치. 0.30 이하의 보수적 OTM 행사가만 추천.</div>
+      <div class="reason"><strong>추정 델타</strong> — 만기 시 행사가 도달(ITM) 확률의 근사치. 0.30 이하의 보수적 OTM 행사가만 추천.</div>
       <div class="reason"><strong>만기 선택</strong> — 차월물~차차월물(약 30~90일)만 추천. 시간가치 소멸(세타)이 가장 효율적으로 작동하는 구간.</div>
+      <div class="reason"><strong>프리미엄 추정 방식</strong> — 선물 옵션 실시간 호가는 무료 데이터로 제공되지 않아, 최근 20일 역사적 변동성을 내재변동성 프록시로 사용해 블랙-76 모델로 계산. 실제 시장 IV가 더 높으면 수취 프리미엄은 표기보다 커질 수 있음.</div>
     </div>
   </div>
 </div>
 
 <div class="footer">
-  본 보고서는 Yahoo Finance 데이터를 바탕으로 자동 생성되었습니다. 종목은 선물 시장을 추종하는 옵션 상장 ETF 기준입니다.
+  본 보고서는 Yahoo Finance 선물 시세를 바탕으로 자동 생성되었습니다 (시장 동향 보고서와 동일한 종목·가격 기준).
   신호는 기술적 지표 기반 참고 자료이며, 투자 손실에 대한 책임은 투자자 본인에게 있습니다.
 </div>
 
