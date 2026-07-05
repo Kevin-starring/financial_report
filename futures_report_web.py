@@ -305,6 +305,8 @@ body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #
 .header h1 { font-size: 26px; font-weight: 700; color: #f7fafc; letter-spacing: -0.5px; }
 .header .subtitle { margin-top: 6px; font-size: 13px; color: #718096; }
 .header .date-badge { display: inline-block; margin-top: 12px; background: #2d3748; border: 1px solid #4a5568; border-radius: 20px; padding: 4px 14px; font-size: 12px; color: #a0aec0; }
+.nav-link { display: inline-block; margin-top: 12px; margin-left: 8px; font-size: 12px; color: #63b3ed; text-decoration: none; border: 1px solid #2d3748; border-radius: 20px; padding: 4px 14px; }
+.nav-link:hover { border-color: #63b3ed; }
 .refresh-btn { background: linear-gradient(135deg, #2b6cb0, #1a365d); border: 1px solid #4a5568; color: #bee3f8; border-radius: 10px; padding: 12px 22px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; white-space: nowrap; margin-top: 4px; }
 .refresh-btn:hover { background: linear-gradient(135deg, #3182ce, #2b6cb0); border-color: #63b3ed; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -419,6 +421,7 @@ def build_html(p, news, today_str, gen_time):
       <h1>📊 글로벌 선물·옵션 시장 동향 보고서</h1>
       <div class="subtitle">통화 · 귀금속 · 에너지 · 곡물 선물 가격 및 주요 뉴스 분석</div>
       <div class="date-badge">🗓 {today_str} 기준 (싱가포르 시간 오후 6시)</div>
+      <a class="nav-link" href="./options.html">📡 옵션 매도 신호봇 →</a>
     </div>
     <div>
       <button class="refresh-btn" onclick="refreshPage()">🔄 새로고침</button>
